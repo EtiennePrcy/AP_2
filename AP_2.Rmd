@@ -1,0 +1,105 @@
+---
+title: "AP_2"
+author: "Pierrecy Etienne"
+date: "2025-02-27"
+output: pdf_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+```{r, "chargement des données", message=FALSE}
+library(readxl)
+library(dplyr)
+library(sandwich)
+library(lmtest)
+library(whitestrap)
+library (plm)
+library(corrplot)
+library(stargazer)
+library(car)
+library(nlme)
+library(writexl)
+library(tidyr)
+library(zoo)
+library(tidyverse)
+library(ggplot2)
+library(seasonal)
+
+
+
+data <- read_excel("data__cleaned.xlsx")
+
+```
+
+
+
+
+```{r, création des séries temporelles, message=FALSE}
+
+
+
+
+dataA <- data %>% filter(Pays == "Allemagne")  
+dataM <- data %>% filter(Pays != "Allemagne")
+
+dataA <- dataA %>%
+  mutate(trimestre = as.yearqtr(trimestre, format = "%Y-Q%q"))
+dataM <- dataM %>%
+  mutate(trimestre = as.yearqtr(trimestre, format = "%Y-Q%q"))
+
+dataA_ts <- ts(dataA$PIB, start = c(year(first(dataA$trimestre)),quarter(first(dataA$trimestre))), frequency = 4)
+dataM_ts <- ts(dataM$PIB, start = c(year(first(dataM$trimestre)),quarter(first(dataM$trimestre))), frequency = 4)
+```
+
+
+
+
+
+```{r, plots, message=FALSE}
+
+ts.plot(dataA_ts, dataM_ts,
+        col = c("blue", "red"),
+        lty = c(1, 2),
+        main = "Comparaison de deux séries temporelles",
+        ylab = "PIB",
+        xlab = "Année",
+        ylim = c(0, 1e+06),  # Ajustez l'échelle de l'axe y
+        lwd = c(1, 2))       # Utilisez des lignes plus épaisses pour Malte
+
+# Ajouter une légende
+legend("topleft", legend = c("Allemagne", "Malte"),
+       col = c("blue", "red"), lty = c(1, 2), lwd = c(1, 2))
+
+
+
+```
+
+
+```{r, correction saisonnalité}
+adjustedA_ts <- seas(dataA_ts)
+adjustedM_ts <- seas(dataM_ts)
+
+plot(adjustedA_ts)
+plot(adjustedM_ts)
+```
+```{r}
+par(mfrow = c(1, 2))  # Pour avoir deux graphiques côte à côte
+
+acf(dataA_ts, main = "ACF de la Série Originale - Pays A", 
+    lag.max = 20, col = "blue")
+
+# Tracer l'ACF pour le second pays
+acf(dataM_ts, main = "ACF de la Série Originale - Pays M", 
+    lag.max = 20, col = "red")
+
+# Réinitialiser la mise en page graphique à une seule fenêtre
+par(mfrow = c(1, 1))
+```
+
+
+
+
+
+
