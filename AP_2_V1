@@ -1,0 +1,207 @@
+---
+title: "AP_2"
+author: "KOLAREK Martin"
+date: "`r Sys.Date()`"
+output: html_document
+---
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+```{r, "chargement des données", message=FALSE}
+library(readxl)
+library(dplyr)
+library(sandwich)
+library(lmtest)
+library(whitestrap)
+library (plm)
+library(corrplot)
+library(stargazer)
+library(car)
+library(nlme)
+library(writexl)
+library(tidyr)
+library(zoo)
+library(tidyverse)
+library(ggplot2)
+library(seasonal)
+
+
+
+data <- read_xlsx("C:/Users/ceraf/OneDrive/Desktop/APE_MPE_M1/S2_MPE/integration U13/data__cleaned.xlsx")
+
+```
+
+
+
+
+```{r, création des séries temporelles, message=FALSE}
+
+
+
+
+dataA <- data %>% filter(Pays == "Allemagne")  
+dataM <- data %>% filter(Pays != "Allemagne")
+
+dataA <- dataA %>%
+  mutate(trimestre = as.yearqtr(trimestre, format = "%Y-Q%q"))
+dataM <- dataM %>%
+  mutate(trimestre = as.yearqtr(trimestre, format = "%Y-Q%q"))
+
+dataA_ts <- ts(dataA$PIB, start = c(year(first(dataA$trimestre)),quarter(first(dataA$trimestre))), frequency = 4)
+dataM_ts <- ts(dataM$PIB, start = c(year(first(dataM$trimestre)),quarter(first(dataM$trimestre))), frequency = 4)
+```
+
+```{r}
+#j'ai rajouté ces deux graphiques juste pour qu'on voit les dynamiques de Malte et de l'Allemagne 
+plot(dataA_ts)
+plot(dataM_ts)
+```
+
+
+
+
+```{r, plots, message=FALSE}
+
+ts.plot(dataA_ts, dataM_ts,
+        col = c("blue", "red"),
+        lty = c(1, 2),
+        main = "Comparaison de deux séries temporelles",
+        ylab = "PIB",
+        xlab = "Année",
+        ylim = c(0, 1e+06),  # Ajustez l'échelle de l'axe y
+        lwd = c(1, 2))       # Utilisez des lignes plus épaisses pour Malte
+
+# Ajouter une légende
+legend("topleft", legend = c("Allemagne", "Malte"),
+       col = c("blue", "red"), lty = c(1, 2), lwd = c(1, 2))
+
+
+
+```
+
+
+```{r, correction saisonnalité}
+adjustedA_ts <- seas(dataA_ts)
+adjustedM_ts <- seas(dataM_ts)
+
+#le premier graphe beug chez moi
+plot(adjustedA_ts)
+plot(adjustedM_ts)
+```
+```{r}
+par(mfrow = c(1, 2))  # Pour avoir deux graphiques côte à côte
+
+acf(dataA_ts, main = "ACF de la Série Originale - Pays A", 
+    lag.max = 20, col = "blue")
+
+# Tracer l'ACF pour le second pays
+acf(dataM_ts, main = "ACF de la Série Originale - Pays M", 
+    lag.max = 20, col = "red")
+
+# Réinitialiser la mise en page graphique à une seule fenêtre
+par(mfrow = c(1, 1))
+```
+```{r}
+#Application des Filtres HP, BK et Hamilton
+# Charger les packages nécessaires
+library(mFilter)
+
+# Appliquer le filtre de Hodrick-Prescott (HP)
+hp_A <- hpfilter(dataA_ts, freq = 1600)  # freq = 1600 pour les données trimestrielles
+hp_M <- hpfilter(dataM_ts, freq = 1600)
+
+trend_hp_A <- hp_A$trend
+cycle_hp_A <- hp_A$cycle
+trend_hp_M <- hp_M$trend
+cycle_hp_M <- hp_M$cycle
+
+# Appliquer le filtre de Baxter-King (BK)
+bk_A <- bkfilter(dataA_ts, pl = 6, pu = 32, nfix = 12)
+bk_M <- bkfilter(dataM_ts, pl = 6, pu = 32, nfix = 12)
+
+trend_bk_A <- bk_A$trend
+cycle_bk_A <- bk_A$cycle
+trend_bk_M <- bk_M$trend
+cycle_bk_M <- bk_M$cycle
+
+# Fonction pour appliquer le filtre de Hamilton
+hamilton_filter <- function(series, h = 8) {
+  n <- length(series)
+  trend <- rep(NA, n)
+  
+  for (t in (h + 1):n) {
+    trend[t] <- mean(series[(t - h): (t - 1)])
+  }
+  
+  cycle <- series - trend  # Le cycle est la différence entre la série et sa tendance
+  return(list(trend = trend, cycle = cycle))
+}
+
+# Appliquer le filtre de Hamilton
+ham_A <- hamilton_filter(dataA_ts, h = 8)
+ham_M <- hamilton_filter(dataM_ts, h = 8)
+
+trend_ham_A <- ts(ham_A$trend, start = start(dataA_ts), frequency = 4)
+cycle_ham_A <- ts(ham_A$cycle, start = start(dataA_ts), frequency = 4)
+
+trend_ham_M <- ts(ham_M$trend, start = start(dataM_ts), frequency = 4)
+cycle_ham_M <- ts(ham_M$cycle, start = start(dataM_ts), frequency = 4)
+
+# Affichage des tendances (pas demandé)
+par(mfrow = c(3, 2))
+
+plot(trend_hp_A, main = "Tendance HP - Allemagne", col = "blue", type = "l")
+plot(trend_hp_M, main = "Tendance HP - Malte", col = "red", type = "l")
+
+plot(trend_bk_A, main = "Tendance BK - Allemagne", col = "blue", type = "l")
+plot(trend_bk_M, main = "Tendance BK - Malte", col = "red", type = "l")
+
+plot(trend_ham_A, main = "Tendance Hamilton - Allemagne", col = "blue", type = "l")
+plot(trend_ham_M, main = "Tendance Hamilton - Malte", col = "red", type = "l")
+
+par(mfrow = c(1,1))  # Réinitialiser l'affichage
+
+```
+
+```{r}
+#j'a un doute sur la méthodo ici
+
+#Comparaison et Interpr ́etation des Cycles
+# Trouver la longueur minimale parmi les cycles
+min_length <- min(length(cycle_hp_A), length(cycle_bk_A), length(cycle_ham_A),
+                  length(cycle_hp_M), length(cycle_bk_M), length(cycle_ham_M))
+
+# Tronquer toutes les séries à cette longueur
+cycle_hp_A <- tail(cycle_hp_A, min_length)
+cycle_bk_A <- tail(cycle_bk_A, min_length)
+cycle_ham_A <- tail(cycle_ham_A, min_length)
+cycle_hp_M <- tail(cycle_hp_M, min_length)
+cycle_bk_M <- tail(cycle_bk_M, min_length)
+cycle_ham_M <- tail(cycle_ham_M, min_length)
+
+# Regrouper les cycles dans une data frame pour analyse
+cycles_data <- data.frame(
+  cycle_hp_A = cycle_hp_A,
+  cycle_bk_A = cycle_bk_A,
+  cycle_ham_A = cycle_ham_A,
+  cycle_hp_M = cycle_hp_M,
+  cycle_bk_M = cycle_bk_M,
+  cycle_ham_M = cycle_ham_M
+)
+
+# Calculer et afficher la matrice de corrélation
+cor_matrix <- cor(cycles_data, use = "complete.obs")
+
+# Afficher sous forme de tableau
+print(cor_matrix)
+
+# Affichage graphique
+corrplot(cor_matrix, method = "color", type = "lower", tl.col = "black", tl.srt = 45)
+
+```
+
+
+
+
+
