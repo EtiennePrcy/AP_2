@@ -85,18 +85,255 @@ plot(adjustedA_ts)
 plot(adjustedM_ts)
 ```
 ```{r}
-par(mfrow = c(1, 2))  # Pour avoir deux graphiques côte à côte
+
 
 acf(dataA_ts, main = "ACF de la Série Originale - Pays A", 
-    lag.max = 20, col = "blue")
+    lag.max = 40, col = "blue")
 
 # Tracer l'ACF pour le second pays
 acf(dataM_ts, main = "ACF de la Série Originale - Pays M", 
-    lag.max = 20, col = "red")
+    lag.max = 40, col = "red")
 
-# Réinitialiser la mise en page graphique à une seule fenêtre
-par(mfrow = c(1, 1))
 ```
+```{r, filtres, message=FALSE}
+#Application des Filtres HP, BK et Hamilton
+# Charger les packages nécessaires
+library(mFilter)
+
+# Appliquer le filtre de Hodrick-Prescott (HP)
+hp_A <- hpfilter(dataA_ts, freq = 1600)  # freq = 1600 pour les données trimestrielles
+hp_M <- hpfilter(dataM_ts, freq = 1600)
+
+trend_hp_A <- hp_A$trend
+cycle_hp_A <- hp_A$cycle
+trend_hp_M <- hp_M$trend
+cycle_hp_M <- hp_M$cycle
+
+# Appliquer le filtre de Baxter-King (BK)
+bk_A <- bkfilter(dataA_ts, pl = 6, pu = 32, nfix = 12)
+bk_M <- bkfilter(dataM_ts, pl = 6, pu = 32, nfix = 12)
+
+trend_bk_A <- bk_A$trend
+cycle_bk_A <- bk_A$cycle
+trend_bk_M <- bk_M$trend
+cycle_bk_M <- bk_M$cycle
+
+# Fonction pour appliquer le filtre de Hamilton
+hamilton_filter <- function(series, h = 8) {
+  n <- length(series)
+  trend <- rep(NA, n)
+
+  for (t in (h + 1):n) {
+    trend[t] <- mean(series[(t - h): (t - 1)])
+  }
+
+  cycle <- series - trend  # Le cycle est la différence entre la série et sa tendance
+  return(list(trend = trend, cycle = cycle))
+}
+
+# Appliquer le filtre de Hamilton
+ham_A <- hamilton_filter(dataA_ts, h = 8)
+ham_M <- hamilton_filter(dataM_ts, h = 8)
+
+trend_ham_A <- ts(ham_A$trend, start = start(dataA_ts), frequency = 4)
+cycle_ham_A <- ts(ham_A$cycle, start = start(dataA_ts), frequency = 4)
+
+trend_ham_M <- ts(ham_M$trend, start = start(dataM_ts), frequency = 4)
+cycle_ham_M <- ts(ham_M$cycle, start = start(dataM_ts), frequency = 4)
+
+
+
+# Affichage des tendances (pas demandé)
+par(mfrow = c(3, 2))
+
+plot(trend_hp_A, main = "Tendance HP - Allemagne", col = "blue", type = "l")
+plot(trend_hp_M, main = "Tendance HP - Malte", col = "red", type = "l")
+
+plot(trend_bk_A, main = "Tendance BK - Allemagne", col = "blue", type = "l")
+plot(trend_bk_M, main = "Tendance BK - Malte", col = "red", type = "l")
+
+plot(trend_ham_A, main = "Tendance Hamilton - Allemagne", col = "blue", type = "l")
+plot(trend_ham_M, main = "Tendance Hamilton - Malte", col = "red", type = "l")
+
+par(mfrow = c(1,1))  # Réinitialiser l'affichage
+
+```
+
+```{r, correlations, message=FALSE}
+#j'a un doute sur la méthodo ici
+
+#Comparaison et Interpr ́etation des Cycles
+# Trouver la longueur minimale parmi les cycles
+min_length <- min(length(cycle_hp_A), length(cycle_bk_A), length(cycle_ham_A),
+                  length(cycle_hp_M), length(cycle_bk_M), length(cycle_ham_M))
+
+# Tronquer toutes les séries à cette longueur
+cycle_hp_A <- tail(cycle_hp_A, min_length)
+cycle_bk_A <- tail(cycle_bk_A, min_length)
+cycle_ham_A <- tail(cycle_ham_A, min_length)
+cycle_hp_M <- tail(cycle_hp_M, min_length)
+cycle_bk_M <- tail(cycle_bk_M, min_length)
+cycle_ham_M <- tail(cycle_ham_M, min_length)
+
+# Regrouper les cycles dans une data frame pour analyse (entre les pays)
+cycles_data <- data.frame(
+  cycle_hp_A = cycle_hp_A,
+  cycle_bk_A = cycle_bk_A,
+  cycle_ham_A = cycle_ham_A,
+  cycle_hp_M = cycle_hp_M,
+  cycle_bk_M = cycle_bk_M,
+  cycle_ham_M = cycle_ham_M
+)
+
+# Calculer et afficher la matrice de corrélation
+cor_matrix <- cor(cycles_data, use = "complete.obs")
+
+# Afficher sous forme de tableau
+#print(cor_matrix)
+
+# Affichage graphique
+corrplot(cor_matrix, method = "color", type = "lower", tl.col = "black", tl.srt = 45, addCoef.col = "white")
+
+#Regrouper les cycles par pays
+
+#Allemagne
+
+cycle_data_A <- data.frame(
+  cycle_hp_A = cycle_hp_A,
+  cycle_bk_A = cycle_bk_A,
+  cycle_ham_A = cycle_ham_A
+)
+
+cycle_data_M <- data.frame(
+  cycle_hp_M = cycle_hp_M,
+  cycle_bk_M = cycle_bk_M,
+  cycle_ham_M = cycle_ham_M
+)
+cor_matrix_A <- cor(cycle_data_A, use = "complete.obs")
+cor_matrix_M <- cor(cycle_data_M, use = "complete.obs")
+
+corrplot(cor_matrix_A, method = "color", type = "lower", tl.col = "black", tl.srt = 45, title = "Corrélation cycles Deutschland", addCoef.col = "white")
+corrplot(cor_matrix_M, method = "color", type = "lower", tl.col = "black", tl.srt = 45, addCoef.col = "white")
+#ggsave("corr_matrix.jpeg", plot = cor_matrix_A, device = "jpeg", width = 8, height = 6, dpi = 300)
+
+```
+
+```{r, plot cycles, message=FALSE}
+#Allemagne
+cycle_data_long_A <- cycle_data_A %>%
+  mutate(Time = 1:nrow(cycle_data_A)) %>%  # Ajouter une colonne de temps si elle n'existe pas
+  pivot_longer(cols = -Time, names_to = "Filtre", values_to = "Cycle")
+ggplot(cycle_data_long_A, aes(x = Time, y = Cycle, color = Filtre)) +
+  geom_line(size = 1) +
+  theme_minimal() +
+  labs(title = "Comparaison des filtres pour les cycles, Allemagne",
+       x = "Temps",
+       y = "Valeur du cycle",
+       color = "Filtre") +
+  scale_color_manual(values = c("blue", "red", "green"))  # Personnaliser les couleurs
+
+
+#Malte
+
+cycle_data_long_M <- cycle_data_M %>%
+  mutate(Time = 1:nrow(cycle_data_M)) %>%  # Ajouter une colonne de temps si elle n'existe pas
+  pivot_longer(cols = -Time, names_to = "Filtre", values_to = "Cycle")
+ggplot(cycle_data_long_M, aes(x = Time, y = Cycle, color = Filtre)) +
+  geom_line(size = 1) +
+  theme_minimal() +
+  labs(title = "Comparaison des filtres pour les cycles, Malte",
+       x = "Temps",
+       y = "Valeur du cycle",
+       color = "Filtre") +
+  scale_color_manual(values = c("blue", "red", "green"))  # Personnaliser les couleurs
+
+
+```
+```{r, acf cycles allemagne, message=FALSE}
+#ALLEMAGNE
+
+
+
+acf(na.omit(cycle_bk_A), lag.max = 40)
+acf(na.omit(cycle_ham_A), lag.max = 40)
+acf(cycle_hp_A, lag.max = 40)
+
+
+
+
+
+```
+```{r, acf cycles malte, message=FALSE}
+
+
+
+acf(na.omit(cycle_bk_M), lag.max = 40)
+acf(na.omit(cycle_ham_M), lag.max = 40)
+acf(cycle_hp_M, lag.max = 40)
+
+
+
+```
+
+```{r, acf tendance allemagne, message=FALSE}
+#ALLEMAGNE
+
+
+
+acf(na.omit(trend_bk_A), lag.max = 40)
+acf(na.omit(trend_ham_A), lag.max = 40)
+acf(trend_hp_A, lag.max = 40)
+
+
+
+
+
+```
+
+```{r, acf tendance malte, message=FALSE}
+
+
+
+acf(na.omit(trend_bk_M), lag.max = 40)
+acf(na.omit(trend_ham_M), lag.max = 40)
+acf(trend_hp_M, lag.max = 40)
+
+
+
+```
+
+
+```{r, output gap allemagne}
+
+og_A <- data.frame(
+  PIB = dataA$PIB,
+  PIB_Potentiel = trend_hp_A
+)
+og_A <- og_A %>%
+  mutate(og = ((og_A$PIB -og_A$Series.1) / og_A$Series.1) * 100,
+         trimestre = dataA$trimestre)
+
+ggplot(og_A, aes(x = trimestre, y = og)) +
+  geom_line() +
+  labs(title = "Output gap Allemagne")  
+```
+
+
+```{r, output gap Malte}
+
+og_M <- data.frame(
+  PIB = dataM$PIB,
+  PIB_Potentiel = trend_hp_M
+)
+og_M <- og_M %>%
+  mutate(og = ((og_M$PIB -og_M$Series.1) / og_M$Series.1) * 100,
+         trimestre = dataA$trimestre)
+
+ggplot(og_M, aes(x = trimestre, y = og)) +
+  geom_line() +
+  labs(title = "Output gap Malte")  
+```
+
 
 
 
